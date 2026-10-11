@@ -24,8 +24,7 @@ COPY src/serving/model/production /app/model
 # make "serving" and "app" importable without the "src." prefix
 # ensures logs are shown in real-time (no buffering).
 # lets you import modules using from app... instead of from src.app....
-ENV PYTHONUNBUFFERED=1 \ 
-    PYTHONPATH=/app/src
+ENV PYTHONUNBUFFERED=1 PYTHONPATH=/app/src
 
 # 6. Expose FastAPI port
 EXPOSE 8000

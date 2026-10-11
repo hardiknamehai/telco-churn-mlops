@@ -1,6 +1,21 @@
-# Telco Customer Churn Prediction — End-to-End MLOps Pipeline
+# Telco Customer Churn Prediction — MLOps Learning Project
 
-Predicting telecom customer churn with an XGBoost classifier, served via a FastAPI REST API and an interactive Gradio web UI — fully containerised, tracked with MLflow, and delivered through an automated CI/CD pipeline.
+A work-in-progress project for learning and documenting an end-to-end MLOps workflow for telecom customer churn prediction. The reference codebase uses XGBoost, MLflow, FastAPI, Gradio, Docker, and GitHub Actions. I am working through setup and verification before treating the pipeline as fully operational.
+
+
+## My Progress
+
+**Status: Work in progress**
+
+I am using this repository to understand how the data pipeline, model training, experiment tracking, API, web interface, containerization, and automation fit together. My current focus is to review the codebase, get the environment running, and verify each component step by step.
+
+The technical details below describe the reference implementation; commands, workflows, and reported metrics should be treated as unverified in my environment until I have run and checked them.
+
+## Project Reference and Attribution
+
+This repository is based on the public project by [Affan Khan](https://github.com/AffanKhan007), whose original repository is [Telco-Customer-Churn-ML](https://github.com/AffanKhan007/Telco-Customer-Churn-ML). The original author is credited below. I will document my own changes as I make and test them.
+
+The downloaded source did not include a separate license file. Please verify redistribution permissions and applicable licensing terms before sharing reused source code.
 
 ---
 

@@ -141,11 +141,20 @@ Docker build and runtime behavior should be verified before relying on this meth
 
 MLflow is included to record experiment parameters, metrics, and model artifacts. The repository also contains model evaluation and hyperparameter-tuning scripts.
 
-### Reference result from the upstream implementation
+### Metrics recorded in the bundled production model
 
-The original public implementation reports a **ROC-AUC of 0.837** in its README: [upstream project](https://github.com/AffanKhan007/Telco-Customer-Churn-ML).
+The committed model artifacts under `src/serving/model/production/` include these recorded evaluation metrics:
 
-This is an upstream-reported reference result, **not a result independently reproduced in this repository**. Results may differ with changes to data processing, dependencies, training configuration, or model artifacts. Record this repository's own ROC-AUC, precision, recall, and F1-score after running the pipeline before presenting them as verified results.
+| Metric | Recorded value |
+|---|---:|
+| ROC-AUC | 0.8367 |
+| Precision | 0.4904 |
+| Recall | 0.8209 |
+| F1-score | 0.6140 |
+
+These values are stored in the model's MLflow metric files. The model metadata records a creation date of **August 19, 2025** (run ID `3b1a41221fc44548aed629fa42b762e0`). They describe the bundled model artifact; they are **not a fresh evaluation produced by running this repository's current pipeline**. Re-run the pipeline to reproduce or update them.
+
+The project was informed by this [upstream implementation](https://github.com/AffanKhan007/Telco-Customer-Churn-ML).
 
 ## Current Focus
 

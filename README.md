@@ -1,529 +1,158 @@
-# Telco Customer Churn Prediction — MLOps Learning Project
+# Telco Customer Churn Prediction — MLOps
 
-A work-in-progress project for learning and documenting an end-to-end MLOps workflow for telecom customer churn prediction. The reference codebase uses XGBoost, MLflow, FastAPI, Gradio, Docker, and GitHub Actions. I am working through setup and verification before treating the pipeline as fully operational.
+An end-to-end machine learning project focused on predicting telecom customer churn and exploring the workflow around model development, experiment tracking, and model serving.
 
+**Status:** Work in progress. The pipeline and setup instructions are being reviewed and tested.
 
-## My Progress
+## Overview
 
-**Status: Work in progress**
+Customer churn prediction is a binary classification task: using customer account and service information to estimate whether a customer is likely to leave a telecom provider.
 
-I am using this repository to understand how the data pipeline, model training, experiment tracking, API, web interface, containerization, and automation fit together. My current focus is to review the codebase, get the environment running, and verify each component step by step.
+The project includes code for data validation, preprocessing, feature engineering, XGBoost model training, MLflow experiment tracking, and prediction through a FastAPI endpoint with a Gradio interface.
 
-The technical details below describe the reference implementation; commands, workflows, and reported metrics should be treated as unverified in my environment until I have run and checked them.
+## Workflow
 
-## Project Reference and Attribution
+```text
+Customer data
+    |
+    v
+Data validation and preprocessing
+    |
+    v
+Feature engineering
+    |
+    v
+XGBoost training and evaluation
+    |
+    +------> MLflow experiment tracking
+    |
+    v
+Prediction serving
+    |
+    +------> FastAPI
+    |
+    +------> Gradio interface
 
-This repository is based on the public project by [Affan Khan](https://github.com/AffanKhan007), whose original repository is [Telco-Customer-Churn-ML](https://github.com/AffanKhan007/Telco-Customer-Churn-ML). The original author is credited below. I will document my own changes as I make and test them.
-
-The downloaded source did not include a separate license file. Please verify redistribution permissions and applicable licensing terms before sharing reused source code.
-
----
-
-## Project Overview & Data Flow
-
-This project solves a binary classification problem: given a telecom customer's demographics, account details, and service subscriptions, predict whether they will churn (leave the company). The model is operationalised end-to-end — from raw data validation through to a live API and web interface.
-
-### Pipeline Stages
-
-```
-                       ┌──────────────────────┐
-                       │  data/raw/telco.csv   │
-                       └──────────┬───────────┘
-                                  │
-                                  ▼
-               ┌──────────────────────────────────┐
-               │  1. DATA VALIDATION              │
-               │  Great Expectations              │
-               │  Schema, ranges, business rules  │
-               └──────────────┬───────────────────┘
-                              │
-                              ▼
-               ┌──────────────────────────────────┐
-               │  2. PREPROCESSING                │
-               │  Drop IDs, coerce types, fill NA │
-               └──────────────┬───────────────────┘
-                              │
-                              ▼
-               ┌──────────────────────────────────┐
-               │  3. FEATURE ENGINEERING          │
-               │  Binary encoding (Yes/No → 0/1)  │
-               │  One-hot encoding (drop_first)   │
-               │  Bool → int conversion            │
-               └──────────────┬───────────────────┘
-                              │
-                              ▼
-               ┌──────────────────────────────────┐
-               │  4. MODEL TRAINING & TRACKING    │
-               │  XGBoost + scale_pos_weight      │
-               │  MLflow: metrics, params, model  │
-               │  Artifacts: feature_columns.txt  │
-               └──────────────┬───────────────────┘
-                              │
-                              ▼
-               ┌──────────────────────────────────┐
-               │  5. SERVING (FastAPI + Gradio)   │
-               │  POST /predict  →  JSON response │
-               │  GET  /docs     →  Swagger UI    │
-               │  GET  /ui       →  Gradio web UI │
-               └──────────────────────────────────┘
+Docker and GitHub Actions are included for containerization
+and workflow automation.
 ```
 
-Each stage is a discrete, testable module under `src/`. The serving pipeline applies **identical** feature transformations as training, preventing train-serve skew.
+## Technology Stack
 
----
-
-## Tech Stack
-
-| Layer | Technology |
+| Area | Tools |
 |---|---|
-| **Language** | Python 3.11 |
-| **ML Model** | XGBoost 3.0 |
-| **Data Processing** | Pandas 2.1, NumPy 1.26, Scikit-learn 1.5 |
-| **Experiment Tracking** | MLflow 2.14 (file-based tracking) |
-| **Data Validation** | Great Expectations 1.5 |
-| **Hyperparameter Tuning** | Optuna 4.4 |
-| **REST API** | FastAPI 0.115 + Pydantic 2.8 |
-| **Web UI** | Gradio (mounted inside FastAPI) |
-| **Server** | Uvicorn 0.30 |
-| **Containerisation** | Docker, python:3.11-slim |
-| **CI/CD** | GitHub Actions → Docker Hub |
-
----
-
-## CI/CD & Automated Pipeline Architecture
-
-The project implements both Continuous Integration (CI) and Continuous Training (CT) through two GitHub Actions workflows.
-
-### CI Flow — `ci.yml` (Automated)
-
-```
- git push → main (GitHub)
-      │
-      ▼
- ┌────────────────────────────────────────────────┐
- │  GitHub Actions  (.github/workflows/ci.yml)    │
- │                                                │
- │  1. Checkout code                              │
- │  2. Set up Python 3.11 + install dependencies  │
- │  3. Lint with Ruff (E, F rules)                │
- │  4. Run automated tests                        │
- │  5. Set up Docker Buildx                       │
- │  6. Login to Docker Hub (secrets)              │
- │  7. docker build + push (multi-arch)           │
- │     → affankhan0966/telco-churn-ml:latest      │
- └────────────────────────────────────────────────┘
-```
-
-Every push to `main` triggers linting, testing, and a multi-platform Docker build (linux/amd64 + linux/arm64). The image uses the model at `src/serving/model/production/` — always the current best model. Broken code is blocked before it ever reaches Docker Hub.
-
-### Continuous Training — `retrain.yml` (Manual or Data-Driven)
-
-```
- Click "Run workflow" in GitHub Actions
-      │
-      ▼
- ┌──────────────────────────────────────────────────┐
- │  GitHub Actions  (.github/workflows/retrain.yml) │
- │                                                  │
- │  1. Set up Python 3.11 + install dependencies    │
- │  2. Run scripts/run_pipeline.py                  │
- │     (validate → preprocess → feature eng → train)│
- │  3. Extract new model ROC AUC from mlruns/       │
- │  4. Compare vs current production model          │
- │     ┌──────────────────────────────────┐         │
- │     │ New ROC > Current ROC ?           │         │
- │     ├── YES → copy to production/       │         │
- │     │         commit + push → ci.yml    │         │
- │     └── NO  → skip, keep current model  │         │
- └──────────────────────────────────────────────────┘
-```
-
-**Triggers:**
-- Manual: Click **Run workflow** at `Actions → Retrain Model`
-- Automatic: Push a new CSV to `data/raw/`
-
-**Evaluation Gate:** The new model is only promoted to production if its ROC AUC exceeds the currently deployed model. This prevents regressions from entering production automatically.
-
-**Required GitHub Secrets:**
-
-| Secret | Purpose |
-|---|---|
-| `DOCKERHUB_USERNAME` | Docker Hub account username |
-| `DOCKERHUB_TOKEN` | Docker Hub personal access token |
-
----
-
-## Docker Hub — Container Registry
-
-Docker Hub acts as the central **container registry** for this project, decoupling the build process from the deployment process.
-
-```
-                      Docker Hub
- GitHub Actions  ──►  ─────────────  ──►  Any Container Runtime
- (build & push)       registry        (pull & run)
-                    Image: affankhan0966/
-                    telco-churn-ml:latest
-```
-
-**Why a container registry matters:**
-
-- **Build once, run anywhere** — the same image works on your laptop, a cloud VM, or a managed service
-- **Decouples CI from CD** — GitHub Actions builds and pushes; deployment platforms pull independently
-- **Versioned artifacts** — every CI run produces a tagged, immutable image
-- **Infrastructure-agnostic** — no vendor lock-in; the image can be pulled by AWS ECS, Render, Fly.io, Hugging Face, or any Docker-compatible platform
-
-The image is always up-to-date: every push to `main` triggers a new build and push, and `retrain.yml` automatically rebuilds when a better model is promoted to production.
-
----
-
-### Deployment Strategies
-
-The project architecture is purpose-built for deployment portability:
-
-| Design Choice | Deployment Benefit |
-|---|---|
-| **Containerisation (Docker)** | Single, self-contained artifact — no dependency conflicts |
-| **Port exposure (8000)** | Standard HTTP port, works behind any reverse proxy |
-| **Health endpoint (`GET /`)** | Any load balancer can verify the app is alive |
-| **MLflow model packaging** | Model loaded dynamically at startup, not hardcoded |
-| **FastAPI + Gradio in one process** | Single container = simpler orchestration |
-
-#### Current: Local + Docker Pull
-
-The app runs locally for development and demos. Anyone with Docker can pull and run it:
-
-```bash
-docker pull affankhan0966/telco-churn-ml:latest
-docker run -p 8000:8000 affankhan0966/telco-churn-ml:latest
-```
-
-#### Future: AWS ECS Fargate (Enterprise / Production)
-
-For production-grade deployments, the project scales to a fully managed, serverless AWS stack:
-
-```
- GitHub Actions
-      │
-      ├──►  Amazon ECR  (private container registry)
-      │
-      └──►  aws ecs update-service  (rolling deployment)
-                │
-                ▼
- ┌────────────────────────────────────────────────┐
- │  AWS ECS Fargate                               │
- │  ┌──────────────────────────────────────────┐  │
- │  │  Task (container running on port 8000)   │  │
- │  └──────────────────────────────────────────┘  │
- │  • Serverless — no EC2 management              │
- │  • Auto-scaling based on CPU/request count     │
- │  • Runs inside a private VPC                   │
- └───────────────────────┬────────────────────────┘
-                         │
-                         ▼
- ┌────────────────────────────────────────────────┐
- │  Application Load Balancer (ALB)               │
- │  • Public HTTP:80 → Target Group HTTP:8000     │
- │  • Health checks on GET /                      │
- │  • SSL termination (HTTPS)                     │
- └────────────────────────────────────────────────┘
-```
-
-**AWS Components:**
-
-| Service | Role |
-|---|---|
-| **ECR** | Private, secure Docker image registry (replaces Docker Hub) |
-| **ECS Fargate** | Serverless container orchestration — runs the app without managing servers |
-| **ALB** | Public entry point, SSL termination, traffic routing, health checks |
-| **VPC + Security Groups** | Network isolation; ALB allows inbound 80, tasks allow inbound 8000 from ALB only |
-| **CloudWatch** | Centralised logging and monitoring for all services |
-| **Auto Scaling** | Scales container count based on traffic (CPU/memory/request thresholds) |
-
-**CD Flow for AWS:**
-
-1. GitHub Actions builds the Docker image
-2. Image is pushed to Amazon ECR
-3. AWS CLI command updates the ECS service: `aws ecs update-service --force-new-deployment`
-4. ECS performs a **rolling update** — starts new tasks, drains old ones, zero downtime
-
----
-
-## Path to Full Automation & Future Upgrades
-
-This project is currently at **MLOps Level 2+** (automated CI + Continuous Training + containerised serving). Below is the roadmap to reach **Level 3** (full automation with model registry and decoupled architecture).
-
-### 1. Continuous Training (CT) — Implemented
-
-The `retrain.yml` workflow provides one-click model retraining from the GitHub Actions tab. The pipeline trains a new model, evaluates it against the current production model, and auto-promotes only if ROC AUC improves. The promoted model is committed to `src/serving/model/production/`, which triggers `ci.yml` to build a new Docker image.
-
-**Future upgrade:** Add a cron schedule (`schedule: cron: '0 0 * * 0'`) to `retrain.yml` for weekly automated retraining without manual intervention.
-
-### 2. Model Registry & Safety Gates
-
-**Current:** The evaluation gate in `retrain.yml` compares new model ROC AUC against the current production model and auto-promotes only if performance improves — this is a lightweight safety gate without a full model registry.
-
-**Upgrade:** Use the **MLflow Model Registry** with staged transitions:
-
-```
- Experimental → Staging → Production → Archived
-```
-
-- **Staging gate:** New model must outperform the current production model on held-out test data
-- **Regression tests:** Validate feature schema, prediction distribution, and latency
-- **Approval:** Manual approval before promoting to Production (or automated if metrics beat thresholds)
-
-### 3. Decoupled Architecture
-
-**Current:** The model is baked into the Docker image at build time.
-
-**Upgrade:** The Docker image becomes a generic serving container. At startup, it connects to a remote MLflow tracking server and loads the `Production` model dynamically:
-
-```python
-model = mlflow.pyfunc.load_model("models:/telco_churn_model/Production")
-```
-
-The model artifacts live in a cloud object store (AWS S3 or Cloudflare R2), configured as the MLflow artifact backend. This enables:
-- **Instant rollbacks:** Revert to a previous model version via the MLflow UI — no Docker rebuild
-- **Independent lifecycles:** Update model without touching application code, and vice versa
-- **Zero Git bloat:** No model binaries in the repository
-
----
+| Language and data processing | Python, Pandas, NumPy |
+| Machine learning | XGBoost, scikit-learn |
+| Experiment tracking | MLflow |
+| Data validation | Great Expectations |
+| Hyperparameter tuning | Optuna |
+| API | FastAPI, Pydantic, Uvicorn |
+| Interface | Gradio |
+| Containerization | Docker |
+| Automation | GitHub Actions |
 
 ## Project Structure
 
-```
-Telco-Customer-Churn-ML/
-├── .github/workflows/
-│   ├── ci.yml                    # CI: Docker build + push to Docker Hub
-│   └── retrain.yml               # CT: automated model retraining + evaluation gate
-├── scripts/
-│   ├── run_pipeline.py           # Main training pipeline (end-to-end)
-│   ├── prepare_processed_data.py # Standalone data processing
-│   ├── test_pipeline_phase1_data_features.py
-│   ├── test_pipeline_phase2_modeling.py
-│   └── test_fastapi.py
-├── src/
-│   ├── data/
-│   │   ├── load_data.py          # CSV loader
-│   │   └── preprocess.py         # Clean columns, fix types, handle NAs
-│   ├── features/
-│   │   └── build_features.py     # Binary + one-hot encoding (training)
-│   ├── models/
-│   │   ├── train.py              # Standalone XGBoost trainer
-│   │   ├── tune.py               # Optuna hyperparameter optimisation
-│   │   └── evaluate.py           # Classification report + confusion matrix
-│   ├── utils/
-│   │   ├── validate_data.py      # Great Expectations validation suite
-│   │   └── utils.py              # Logger helper
-│   ├── app/
-│   │   ├── main.py               # FastAPI app + Gradio UI (primary entry point)
-│   │   └── app.py                # Alternative entry point
-│   └── serving/
-│       ├── inference.py          # Production inference pipeline (multi-fallback)
-│       └── model/
-│           ├── production/       # Current best model (auto-updated by retrain)
-│           └── */                # Historical model runs
+```text
+.
+├── .github/workflows/    # Automation workflows
 ├── data/
-│   ├── raw/
-│   │   └── Telco-Customer-Churn.csv  # Dataset (committed for retraining)
-│   └── processed/                # Cleaned output
-├── dockerfile                    # Docker image (uses production/ model path)
-├── requirements.txt              # Python dependencies
+│   ├── raw/              # Input dataset
+│   └── processed/        # Processed data
+├── scripts/              # Pipeline and test scripts
+├── src/
+│   ├── data/             # Data loading and preprocessing
+│   ├── features/         # Feature engineering
+│   ├── models/           # Training, evaluation, and tuning
+│   ├── serving/          # Prediction and model artifacts
+│   ├── app/              # FastAPI and Gradio application
+│   └── utils/            # Supporting utilities
+├── dockerfile
+├── requirements.txt
 └── README.md
 ```
 
----
+## Getting Started
 
-## How to Run Locally
+### Requirements
 
-### Prerequisites
-
-- Python 3.11+
+- Python 3.11 or a compatible version
 - Git
-- Docker (optional, for containerised serving)
+- Docker (optional)
 
-### 1. Clone & Set Up Environment
+### 1. Clone the repository
 
 ```bash
-git clone https://github.com/AffanKhan007/Telco-Customer-Churn-ML.git
-cd Telco-Customer-Churn-ML
+git clone https://github.com/hardiknamehai/telco-churn-mlops.git
+cd telco-churn-mlops
+```
 
-# Create and activate virtual environment
+### 2. Create an environment and install dependencies
+
+**Windows**
+
+```bash
 python -m venv venv
-
-# Windows
 venv\Scripts\activate
-
-# macOS/Linux
-source venv/bin/activate
-
-# Install dependencies
 pip install -r requirements.txt
 ```
 
-### 2. Dataset
+**macOS/Linux**
 
-The Telco Customer Churn dataset is included in the repository at `data/raw/Telco-Customer-Churn.csv`. No download needed.
+```bash
+python -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+```
 
-If you want to update the dataset, replace this file (the retrain workflow is triggered by changes to `data/raw/`).
-
-### 3. Train the Model (Optional)
-
-A pre-trained model is already bundled in `src/serving/model/production/`. To retrain:
+### 3. Run the training pipeline
 
 ```bash
 python scripts/run_pipeline.py --input data/raw/Telco-Customer-Churn.csv --target Churn
 ```
 
-This runs the full pipeline: data validation → preprocessing → feature engineering → XGBoost training → MLflow logging. The new model and metrics are saved to `mlruns/`.
+This script is intended to run data validation, preprocessing, feature engineering, model training, and MLflow logging. Verify the output and dependencies in your environment.
 
-To promote the new model to production (auto-evaluation gate):
-
-```bash
-# Copy the best model to production/
-python scripts/run_pipeline.py --input data/raw/Telco-Customer-Churn.csv --target Churn
-# Then manually copy the best MLflow run to src/serving/model/production/
-# Or use the GitHub Actions retrain.yml workflow which handles this automatically
-```
-
-View training runs:
-
-```bash
-mlflow ui --backend-store-uri file:./mlruns
-```
-
-### 4. Start the API Server
+### 4. Start the API
 
 ```bash
 python -m uvicorn src.app.main:app --host 0.0.0.0 --port 8000
 ```
 
-### 5. Access the Application
+When the application starts successfully, these endpoints are intended to be available:
 
-| Endpoint | Description |
+| Endpoint | Purpose |
 |---|---|
-| `http://localhost:8000/` | Health check |
-| `http://localhost:8000/predict` | REST API — POST JSON, get churn prediction |
-| `http://localhost:8000/docs` | Auto-generated Swagger documentation |
-| `http://localhost:8000/ui` | Interactive Gradio web form |
+| `/` | Health check |
+| `/predict` | Customer churn prediction |
+| `/docs` | Interactive API documentation |
+| `/ui` | Gradio interface |
 
-### Example API Request
-
-```bash
-curl -X POST http://localhost:8000/predict \
-  -H "Content-Type: application/json" \
-  -d '{
-    "gender": "Female",
-    "Partner": "No",
-    "Dependents": "No",
-    "PhoneService": "Yes",
-    "MultipleLines": "No",
-    "InternetService": "Fiber optic",
-    "OnlineSecurity": "No",
-    "OnlineBackup": "No",
-    "DeviceProtection": "No",
-    "TechSupport": "No",
-    "StreamingTV": "Yes",
-    "StreamingMovies": "Yes",
-    "Contract": "Month-to-month",
-    "PaperlessBilling": "Yes",
-    "PaymentMethod": "Electronic check",
-    "tenure": 1,
-    "MonthlyCharges": 85.0,
-    "TotalCharges": 85.0
-  }'
-```
-
-Response:
-
-```json
-{"prediction": "Likely to churn"}
-```
-
-### 6. Run with Docker
+### 5. Run with Docker
 
 ```bash
-# Build
-docker build -t telco-churn-app -f dockerfile .
-
-# Run
-docker run -p 8000:8000 telco-churn-app
-
-# Or pull from Docker Hub
-docker pull affankhan0966/telco-churn-ml:latest
-docker run -p 8000:8000 affankhan0966/telco-churn-ml:latest
+docker build -t telco-churn-mlops -f dockerfile .
+docker run -p 8000:8000 telco-churn-mlops
 ```
 
-### 7. Run Tests
+Docker build and runtime behavior should be verified before relying on this method.
 
-```bash
-python scripts/test_pipeline_phase1_data_features.py
-python scripts/test_pipeline_phase2_modeling.py
-python scripts/test_fastapi.py
-```
+## Experiment Tracking and Evaluation
 
----
+MLflow is included to record experiment parameters, metrics, and model artifacts. The repository also contains model evaluation and hyperparameter-tuning scripts.
 
-## API Schema
+Update this section with reproducible evaluation metrics after running the training pipeline and confirming the evaluation procedure. No performance figure is presented here as a verified result yet.
 
-**POST `/predict`** — Predict customer churn
+## Current Focus
 
-| Field | Type | Description |
-|---|---|---|
-| `gender` | `string` | `"Male"` or `"Female"` |
-| `Partner` | `string` | `"Yes"` or `"No"` |
-| `Dependents` | `string` | `"Yes"` or `"No"` |
-| `PhoneService` | `string` | `"Yes"` or `"No"` |
-| `MultipleLines` | `string` | `"Yes"`, `"No"`, or `"No phone service"` |
-| `InternetService` | `string` | `"DSL"`, `"Fiber optic"`, or `"No"` |
-| `OnlineSecurity` | `string` | `"Yes"`, `"No"`, or `"No internet service"` |
-| `OnlineBackup` | `string` | `"Yes"`, `"No"`, or `"No internet service"` |
-| `DeviceProtection` | `string` | `"Yes"`, `"No"`, or `"No internet service"` |
-| `TechSupport` | `string` | `"Yes"`, `"No"`, or `"No internet service"` |
-| `StreamingTV` | `string` | `"Yes"`, `"No"`, or `"No internet service"` |
-| `StreamingMovies` | `string` | `"Yes"`, `"No"`, or `"No internet service"` |
-| `Contract` | `string` | `"Month-to-month"`, `"One year"`, or `"Two year"` |
-| `PaperlessBilling` | `string` | `"Yes"` or `"No"` |
-| `PaymentMethod` | `string` | `"Electronic check"`, `"Mailed check"`, `"Bank transfer (automatic)"`, or `"Credit card (automatic)"` |
-| `tenure` | `int` | Number of months as a customer (0-100) |
-| `MonthlyCharges` | `float` | Monthly charges in USD |
-| `TotalCharges` | `float` | Total charges to date in USD |
+- Set up the environment and run the project.
+- Verify model training and evaluation.
+- Test API predictions and the web interface.
+- Check Docker build and workflow automation.
+- Document verified results and future improvements.
 
-**Response:**
+## Reference
 
-```json
-{"prediction": "Likely to churn"}
-```
-or
-```json
-{"prediction": "Not likely to churn"}
-```
+The project structure was informed by an existing public implementation: [Telco Customer Churn MLOps reference repository](https://github.com/AffanKhan007/Telco-Customer-Churn-ML).
 
----
-
-## Model Performance
-
-The current production XGBoost model (in `src/serving/model/production/`) achieves the following on the held-out test set:
-
-| Metric | Value |
-|---|---|
-| **ROC AUC** | 0.837 |
-| **Precision** | Configurable (threshold 0.35) |
-| **Recall** | Configurable (threshold 0.35) |
-| **F1 Score** | Configurable (threshold 0.35) |
-
-The classification threshold is set to `0.35` by default (lower than the standard 0.5) to favour recall — catching more potential churners, even at the cost of some false positives. This is adjustable via the `--threshold` flag during training.
-
-**Evaluation Gate:** The `retrain.yml` workflow compares new model ROC AUC against the current production model before promoting. Only models that strictly outperform the current one are deployed.
-
----
-
-## Author
-
-**Affan Khan** — [GitHub](https://github.com/AffanKhan007)
-
----
-
-## License
-
-This project is for portfolio and educational purposes. The Telco Customer Churn dataset is publicly available on Kaggle.
+Before redistributing reused source code, confirm the applicable license or obtain permission. Changes and results specific to this repository should be documented as they are made and tested.

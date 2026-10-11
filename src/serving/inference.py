@@ -14,7 +14,7 @@ Key Responsibilities:
 
 CRITICAL PATTERN: Training/Serving Consistency
 - Uses fixed BINARY_MAP for deterministic binary encoding
-- Applies same one-hot encoding with drop_first=True
+- Aligns single-row one-hot encodings to the saved training feature schema
 - Maintains exact feature column order from training
 - Handles missing/new categorical values gracefully
 
@@ -167,9 +167,11 @@ def _serve_transform(df: pd.DataFrame) -> pd.DataFrame:
     # Find remaining object/categorical columns (not in BINARY_MAP)
     obj_cols = [c for c in df.select_dtypes(include=["object"]).columns]
     if obj_cols:
-        # Apply one-hot encoding with drop_first=True (same as training)
-        # This prevents multicollinearity by dropping the first category
-        df = pd.get_dummies(df, columns=obj_cols, drop_first=True)
+        # Keep all observed categories here, then align to the saved training schema.
+        # Training drops the first category; the saved FEATURE_COLS omits those
+        # baseline columns. Creating all dummies first prevents valid categories
+        # in a single-row request from being lost before schema alignment.
+        df = pd.get_dummies(df, columns=obj_cols, drop_first=False)
     
     # === STEP 4: Boolean to Integer Conversion ===
     # Convert any boolean columns to integers (XGBoost compatibility)
@@ -200,7 +202,7 @@ def predict(input_dict: dict) -> str:
     
     Args:
         input_dict: Dictionary containing raw customer data with keys matching
-                   the CustomerData schema (18 features total)
+                   the CustomerData schema (19 features total)
                    
     Returns:
         Human-readable prediction string:

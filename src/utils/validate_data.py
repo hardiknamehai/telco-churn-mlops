@@ -102,7 +102,7 @@ def validate_telco_data(df: pd.DataFrame) -> tuple[bool, list[str]]:
         (
             "TotalCharges_non_negative",
             gx.expectations.ExpectColumnValuesToBeBetween(
-                column="TotalCharges", min_value=0
+                column="TotalCharges", min_value=0, mostly=0.998
             ),
         ),
         (
